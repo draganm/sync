@@ -11,6 +11,7 @@ package errgroup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -30,6 +31,8 @@ type Group struct {
 	sem chan token
 
 	errOnce sync.Once
+
+	errLock sync.Mutex
 	err     error
 }
 
@@ -105,8 +108,18 @@ func (g *Group) TryGo(f func() error) bool {
 		defer g.done()
 
 		if err := f(); err != nil {
-			g.errOnce.Do(func() {
+
+			g.errLock.Lock()
+
+			if g.err != nil {
+				g.err = errors.Join(g.err, err)
+			} else {
 				g.err = err
+			}
+
+			g.errLock.Unlock()
+
+			g.errOnce.Do(func() {
 				if g.cancel != nil {
 					g.cancel(g.err)
 				}
